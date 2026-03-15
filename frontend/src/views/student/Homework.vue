@@ -125,7 +125,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading, Refresh } from '@element-plus/icons-vue'
 import { getMyHomework, getHomeworkDetail } from '@/api/homework'
