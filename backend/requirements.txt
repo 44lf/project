@@ -8,7 +8,6 @@ python-multipart==0.0.6
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 pillow==10.1.0
-pytesseract==0.3.10
 opencv-python==4.8.1.78
 numpy==1.26.2
 pandas==2.1.3
@@ -28,3 +27,7 @@ redis>=5.0.0
 
 # Jinja2模板引擎
 jinja2>=3.1.0
+
+# OCR引擎（按需安装）
+# paddlepaddle>=2.5.0
+# paddleocr>=2.7.0

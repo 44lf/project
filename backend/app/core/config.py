@@ -20,9 +20,13 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_EXTENSIONS: set = {"png", "jpg", "jpeg", "gif", "bmp"}
     
-    # OCR配置
+    # OCR引擎配置
+    OCR_ENGINE: str = "mock"  # paddleocr 或 mock
+    PADDLEOCR_USE_GPU: bool = False
+    
+    # OCR配置（兼容旧版Tesseract配置）
     OCR_CONFIDENCE_THRESHOLD: float = 0.85  # 置信度阈值
-    OCR_LANG: str = "chi_sim+eng"  # Tesseract语言包
+    OCR_LANG: str = "chi_sim+eng"  # Tesseract语言包（仅Tesseract模式使用）
     
     # 人工审核配置
     MANUAL_REVIEW_THRESHOLD: float = 0.70  # 低于此置信度转人工审核

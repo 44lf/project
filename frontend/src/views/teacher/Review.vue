@@ -11,6 +11,15 @@
       style="margin-bottom: 20px;"
     />
     
+    <el-alert
+      v-else
+      title="暂无需要人工审核的作业"
+      type="success"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 20px;"
+    />
+    
     <el-table :data="correctionList" v-loading="loading" border>
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="homework.subject" label="学科" width="100">
@@ -45,9 +54,9 @@
             <h4>作业图片</h4>
             <el-image
               v-if="currentCorrection.homework?.file_path"
-              :src="currentCorrection.homework.file_path"
+              :src="getImageUrl(currentCorrection.homework.file_path)"
               style="width: 100%; max-height: 300px;"
-              :preview-src-list="[currentCorrection.homework.file_path]"
+              :preview-src-list="[getImageUrl(currentCorrection.homework.file_path)]"
             />
           </el-col>
           <el-col :span="12">
@@ -99,7 +108,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getCorrections } from '@/api/correction'
+import { getCorrections, submitReview } from '@/api/correction'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -125,13 +134,23 @@ const subjectMap = {
   geography: '地理'
 }
 
+// 获取图片完整URL
+const getImageUrl = (path) => {
+  if (!path) return ''
+  if (path.startsWith('http')) return path
+  return `/uploads/${path.replace('uploads/', '').replace('uploads\\', '')}`
+}
+
 const loadData = async () => {
   loading.value = true
   try {
     const res = await getCorrections()
     // 过滤出需要人工审核的
-    correctionList.value = res.filter(item => item.needs_manual_review === 1)
+    correctionList.value = res.filter(item => item.needs_manual_review === 1 || item.status === 'pending_review')
     pendingCount.value = correctionList.value.length
+  } catch (error) {
+    console.error('加载审核列表失败:', error)
+    ElMessage.error('加载审核列表失败')
   } finally {
     loading.value = false
   }
@@ -148,14 +167,27 @@ const handleReview = (row) => {
 }
 
 const submitReview = async () => {
+  if (!currentCorrection.value) {
+    ElMessage.error('未选择批改记录')
+    return
+  }
+  
   submitting.value = true
   try {
-    // 这里需要调用审核API
+    // 调用审核API: POST /api/v1/reviews/{correction_id}/review
+    await submitReview(currentCorrection.value.id, {
+      score: reviewForm.value.score,
+      feedback: reviewForm.value.feedback,
+      review_notes: reviewForm.value.review_notes
+    })
+    
     ElMessage.success('审核提交成功')
     reviewVisible.value = false
-    loadData()
+    // 刷新列表
+    await loadData()
   } catch (error) {
-    ElMessage.error('提交失败')
+    console.error('提交审核失败:', error)
+    ElMessage.error(error.response?.data?.detail || '提交失败')
   } finally {
     submitting.value = false
   }
@@ -184,5 +216,9 @@ onMounted(() => {
   padding: 10px;
   border-radius: 4px;
   margin-top: 8px;
+  white-space: pre-wrap;
+  font-family: monospace;
+  font-size: 14px;
+  line-height: 1.6;
 }
 </style>

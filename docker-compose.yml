@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=sqlite:///./k12_education.db
+      - REDIS_URL=redis://redis:6379/0
+      - OCR_ENGINE=mock
+      - LLM_BASE_URL=https://api.deepseek.com/v1
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL_NAME=deepseek-chat
+      - SECRET_KEY=your-secret-key-change-in-production
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60
+    depends_on:
+      - redis
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/data:/app/data
+    networks:
+      - k12-network
+    restart: unless-stopped
+
+  celery_worker:
+    build: ./backend
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=sqlite:///./k12_education.db
+      - REDIS_URL=redis://redis:6379/0
+      - OCR_ENGINE=mock
+      - LLM_BASE_URL=https://api.deepseek.com/v1
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL_NAME=deepseek-chat
+      - SECRET_KEY=your-secret-key-change-in-production
+    depends_on:
+      - redis
+      - backend
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/data:/app/data
+    networks:
+      - k12-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - k12-network
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - k12-network
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+
+networks:
+  k12-network:
+    driver: bridge
