@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.db.database import get_db
-from app.schemas.review import ManualReview, ManualReviewCreate, ManualReviewUpdate
+from app.schemas.review import ManualReview, ManualReviewCreate, ManualReviewSubmit, ManualReviewUpdate
 from app.models.review import ManualReview as ManualReviewModel
 from app.models.correction import Correction as CorrectionModel
 from app.models.homework import Homework as HomeworkModel
@@ -70,7 +70,7 @@ def get_review(
 @router.post("/{correction_id}/review", response_model=ManualReview)
 def create_review(
     correction_id: int,
-    review_data: ManualReviewCreate,
+    review_data: ManualReviewSubmit,
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_active_user)
 ):

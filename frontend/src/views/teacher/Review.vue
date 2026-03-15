@@ -97,7 +97,7 @@
       
       <template #footer>
         <el-button @click="reviewVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitReview">
+        <el-button type="primary" :loading="submitting" @click="handleSubmitReview">
           提交审核
         </el-button>
       </template>
@@ -108,7 +108,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getCorrections, submitReview } from '@/api/correction'
+import { getCorrections, submitReview as submitReviewApi } from '@/api/correction'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -166,7 +166,7 @@ const handleReview = (row) => {
   reviewVisible.value = true
 }
 
-const submitReview = async () => {
+const handleSubmitReview = async () => {
   if (!currentCorrection.value) {
     ElMessage.error('未选择批改记录')
     return
@@ -175,7 +175,7 @@ const submitReview = async () => {
   submitting.value = true
   try {
     // 调用审核API: POST /api/v1/reviews/{correction_id}/review
-    await submitReview(currentCorrection.value.id, {
+    await submitReviewApi(currentCorrection.value.id, {
       score: reviewForm.value.score,
       feedback: reviewForm.value.feedback,
       review_notes: reviewForm.value.review_notes

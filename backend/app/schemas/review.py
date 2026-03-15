@@ -9,7 +9,15 @@ class ManualReviewBase(BaseModel):
     review_notes: Optional[str] = None
 
 
+class ManualReviewSubmit(BaseModel):
+    """前端提交人工审核时使用（只含审核内容字段）"""
+    score: Optional[float] = None
+    feedback: Optional[str] = None
+    review_notes: Optional[str] = None
+
+
 class ManualReviewCreate(ManualReviewBase):
+    """内部创建审核记录时使用的完整schema"""
     correction_id: int
     reviewer_id: int
 
