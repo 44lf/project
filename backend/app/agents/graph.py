@@ -11,7 +11,6 @@ from typing import Dict, Any
 
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command
 
 from app.agents.state import CorrectionState
 from app.agents.ocr_agent import ocr_agent
@@ -30,58 +29,23 @@ def human_review_node(state: CorrectionState) -> Dict[str, Any]:
     人工审核节点
     
     此节点会在执行前被中断（interrupt_before），等待教师通过API提交审核结果。
-    当教师提交审核后，使用Command(resume=review_data)恢复执行。
+    实际的待审核记录创建已在 quality_agent 中完成，此节点仅记录日志和返回状态。
+    
+    当教师提交审核后，调用 resume_with_human_review() 函数：
+    1. 使用 update_state() 更新状态（manual_review_score, manual_review_feedback）
+    2. 使用 invoke(None) 恢复执行
     
     Args:
         state: 当前流水线状态
         
     Returns:
-        包含人工审核结果的字典
+        包含状态的字典
     """
-    logger.info(f"进入人工审核节点，作业ID: {state['homework_id']}")
+    logger.info(f"进入人工审核节点（已中断等待），作业ID: {state['homework_id']}")
     
-    # 创建人工审核记录
-    db = SessionLocal()
-    try:
-        # 检查是否已存在审核记录
-        existing_correction = db.query(Correction).filter(
-            Correction.homework_id == state["homework_id"]
-        ).first()
-        
-        if not existing_correction:
-            # 创建待审核的批改记录
-            correction = Correction(
-                homework_id=state["homework_id"],
-                ocr_text=state.get("ocr_text"),
-                ocr_confidence=state.get("ocr_confidence"),
-                ocr_details=state.get("ocr_details"),
-                score=None,
-                feedback=None,
-                errors=state.get("errors", []),
-                status="pending_review",
-                needs_manual_review=1
-            )
-            db.add(correction)
-            db.commit()
-            logger.info(f"创建待审核批改记录，作业ID: {state['homework_id']}")
-        else:
-            # 更新状态为待审核
-            existing_correction.status = "pending_review"
-            existing_correction.needs_manual_review = 1
-            db.commit()
-        
-        # 更新作业状态
-        homework = db.query(Homework).filter(Homework.id == state["homework_id"]).first()
-        if homework:
-            homework.status = "reviewing"
-            db.commit()
-        
-    except Exception as e:
-        logger.exception(f"创建人工审核记录失败: {str(e)}")
-    finally:
-        db.close()
+    # 注意：待审核记录的创建已在 quality_agent 中完成
+    # 此处仅记录日志，实际的人工审核结果会通过 resume_with_human_review 更新状态
     
-    # 返回当前状态，实际的人工审核结果会通过Command(resume=...)传入
     return {
         "status": "waiting_for_human_review"
     }
@@ -239,7 +203,8 @@ def resume_with_human_review(
     """
     使用人工审核结果恢复流水线执行
     
-    当教师完成人工审核后，调用此函数恢复LangGraph执行
+    当教师完成人工审核后，调用此函数恢复LangGraph执行。
+    使用标准的 update_state + invoke 模式恢复，而非 Command(resume)。
     
     Args:
         homework_id: 作业ID
@@ -253,17 +218,24 @@ def resume_with_human_review(
     logger.info(f"恢复流水线执行，作业ID: {homework_id}, 分数: {score}")
     
     try:
-        # 使用Command恢复执行
-        result = compiled_graph.invoke(
-            Command(resume={
-                "manual_review_score": score,
-                "manual_review_feedback": feedback,
-                "review_notes": review_notes
-            }),
-            config={"configurable": {"thread_id": str(homework_id)}}
-        )
+        # 构建线程配置
+        thread_config = {"configurable": {"thread_id": str(homework_id)}}
         
-        logger.info(f"流水线恢复执行完成，作业ID: {homework_id}")
+        # 第一步：更新状态，写入人工审核结果
+        # 这会更新被中断的 human_review 节点的状态
+        state_update = {
+            "manual_review_score": score,
+            "manual_review_feedback": feedback,
+            "status": "human_reviewed"
+        }
+        compiled_graph.update_state(thread_config, state_update)
+        logger.info(f"已更新状态: {state_update}")
+        
+        # 第二步：恢复执行
+        # 传入 None 表示从上次中断的地方继续执行
+        result = compiled_graph.invoke(None, config=thread_config)
+        
+        logger.info(f"流水线恢复执行完成，作业ID: {homework_id}, 结果: {result.get('status')}")
         return result
         
     except Exception as e:
