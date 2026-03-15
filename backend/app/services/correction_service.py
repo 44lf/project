@@ -5,6 +5,11 @@ from app.models.homework import Homework
 from app.schemas.correction import CorrectionCreate, CorrectionUpdate
 from app.services.ocr_service import ocr_service
 from app.core.config import settings
+from app.tasks.correction_task import run_correction_pipeline
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CorrectionService:
@@ -13,87 +18,37 @@ class CorrectionService:
     def __init__(self):
         self.ocr = ocr_service
     
-    def auto_correct(self, db: Session, homework_id: int) -> Correction:
-        """自动批改作业"""
+    def auto_correct(self, db: Session, homework_id: int) -> Dict[str, Any]:
+        """
+        自动批改作业（异步）
+        
+        发送Celery异步任务执行批改流水线，不再同步执行批改逻辑
+        
+        Args:
+            db: 数据库会话
+            homework_id: 作业ID
+            
+        Returns:
+            包含任务ID和状态的字典
+        """
+        logger.info(f"提交异步批改任务，作业ID: {homework_id}")
+        
         # 获取作业信息
         homework = db.query(Homework).filter(Homework.id == homework_id).first()
         if not homework:
             raise ValueError("作业不存在")
         
-        # 进行OCR识别
-        ocr_result = self.ocr.recognize(homework.file_path)
+        # 发送Celery异步任务
+        task = run_correction_pipeline.delay(homework_id)
         
-        # 判断是否需人工审核
-        needs_review = self.ocr.needs_manual_review(ocr_result.get("confidence", 0))
+        logger.info(f"批改任务已提交，作业ID: {homework_id}, 任务ID: {task.id}")
         
-        # 简单批改逻辑（示例）
-        score, feedback, errors = self._calculate_score(
-            homework.subject,
-            ocr_result.get("text", "")
-        )
-        
-        # 创建批改记录
-        correction = Correction(
-            homework_id=homework_id,
-            ocr_text=ocr_result.get("text"),
-            ocr_confidence=ocr_result.get("confidence"),
-            ocr_details=ocr_result.get("details"),
-            score=score,
-            feedback=feedback,
-            errors=errors,
-            status="auto_corrected" if not needs_review else "pending",
-            needs_manual_review=1 if needs_review else 0
-        )
-        
-        db.add(correction)
-        db.commit()
-        db.refresh(correction)
-        
-        # 更新作业状态
-        homework.status = "completed" if not needs_review else "processing"
-        db.commit()
-        
-        return correction
-    
-    def _calculate_score(self, subject: str, text: str) -> tuple:
-        """
-        计算得分（简化版示例）
-        实际应用中应该根据学科和题目类型进行智能评分
-        """
-        # 这里只是一个示例逻辑
-        if not text or len(text.strip()) < 10:
-            return 0, "未识别到有效内容，请重新上传清晰的作业图片。", {"error": "content_too_short"}
-        
-        # 模拟评分逻辑
-        text_length = len(text)
-        base_score = min(text_length / 10, 100)  # 基于字数的基础分
-        
-        # 根据学科调整
-        subject_bonus = {
-            "math": 5,
-            "chinese": 0,
-            "english": 0,
-            "physics": 5,
-            "chemistry": 5
-        }.get(subject.lower(), 0)
-        
-        final_score = min(base_score + subject_bonus, 100)
-        
-        if final_score >= 90:
-            feedback = "优秀！作业完成得很好。"
-        elif final_score >= 80:
-            feedback = "良好，继续保持。"
-        elif final_score >= 60:
-            feedback = "及格，还有提升空间。"
-        else:
-            feedback = "需要努力，建议复习相关知识点。"
-        
-        errors = {
-            "word_count": text_length,
-            "suggestions": ["注意书写规范", "保持作业整洁"]
+        return {
+            "task_id": task.id,
+            "status": "processing",
+            "homework_id": homework_id,
+            "message": "批改任务已提交，正在异步处理中"
         }
-        
-        return round(final_score, 2), feedback, errors
     
     def get_correction(self, db: Session, correction_id: int) -> Optional[Correction]:
         """获取批改详情"""

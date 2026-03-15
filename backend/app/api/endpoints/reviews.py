@@ -6,8 +6,14 @@ from app.db.database import get_db
 from app.schemas.review import ManualReview, ManualReviewCreate, ManualReviewUpdate
 from app.models.review import ManualReview as ManualReviewModel
 from app.models.correction import Correction as CorrectionModel
+from app.models.homework import Homework as HomeworkModel
 from app.models.user import User as UserModel, UserRole
 from app.api.endpoints.auth import get_current_active_user
+from app.agents.graph import resume_with_human_review
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -68,7 +74,12 @@ def create_review(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_active_user)
 ):
-    """创建人工审核"""
+    """
+    创建人工审核
+    
+    除了保存review记录，还会恢复LangGraph的human_review中断，
+    让graph继续执行save_result节点
+    """
     if current_user.role not in [UserRole.TEACHER, UserRole.ADMIN]:
         raise HTTPException(status_code=403, detail="无权操作")
     
@@ -97,6 +108,21 @@ def create_review(
     
     db.commit()
     db.refresh(review)
+    
+    # 恢复LangGraph执行
+    try:
+        logger.info(f"恢复LangGraph执行，作业ID: {correction.homework_id}")
+        result = resume_with_human_review(
+            homework_id=correction.homework_id,
+            score=review_data.score,
+            feedback=review_data.feedback,
+            review_notes=review_data.review_notes
+        )
+        logger.info(f"LangGraph恢复执行完成，结果: {result}")
+    except Exception as e:
+        logger.exception(f"恢复LangGraph执行失败: {str(e)}")
+        # 不影响审核记录的保存，但记录错误
+    
     return review
 
 

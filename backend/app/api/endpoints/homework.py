@@ -67,7 +67,7 @@ async def upload_homework(
         description=description,
         file_path=file_path,
         file_name=file.filename,
-        status="pending"
+        status="processing"  # 异步处理，状态设为processing
     )
     db.add(homework)
     db.commit()
